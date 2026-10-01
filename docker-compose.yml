@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  database:
+    image: pgvector/pgvector:pg16
+    container_name: omnisift-db
+    environment:
+      POSTGRES_USER: omnisift
+      POSTGRES_PASSWORD: omnisift_password
+      POSTGRES_DB: omnisift
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnisift -d omnisift"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  object-storage:
+    image: chrislusf/seaweedfs:latest
+    container_name: omnisift-object-storage
+    command: >
+      server
+      -master.port=9333
+      -master.defaultReplication=000
+      -volume.port=8080
+      -filer.port=8888
+      -s3.port=8333
+      -filer
+      -s3
+    ports:
+      - "9000:8333"
+      - "9001:8888"
+      - "9333:9333"
+      - "8080:8080"
+    volumes:
+      - seaweedfs_data:/data
+    environment:
+      - WEED_S3_ACCESS_KEY=omnisiftadmin
+      - WEED_S3_SECRET_KEY=omnisiftsecret
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8333"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+volumes:
+  db_data:
+  seaweedfs_data:
