@@ -5,8 +5,42 @@ import { useRagChat } from "@/hooks/useRagChat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { DocumentDrawer } from "@/components/DocumentDrawer";
 import { MessageRenderer } from "@/components/CitationBadge";
-import { Menu, X, Bot, MessageSquare, Send, Paperclip, Loader2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { Menu, X, Bot, MessageSquare, Send, Paperclip, Loader2, AlertCircle, RefreshCw, Trash2, BarChart2, Lightbulb, ChevronDown, ExternalLink } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
+
+// Suggested prompts per role
+const ROLE_PROMPTS: Record<string, string[]> = {
+  finance: [
+    "What is our ASC 606 revenue recognition policy?",
+    "What was our net runway as of Q3?",
+    "What is the contract value for account ACC-2024-0042?",
+    "What is our Q3 2024 cash burn rate?",
+  ],
+  legal: [
+    "What are the liability caps in the master services agreement?",
+    "What are the NDA terms in the vendor MSA?",
+    "What jurisdiction governs the MSA?",
+    "What is the termination for convenience clause?",
+  ],
+  hr: [
+    "What is the parental leave policy?",
+    "What health insurance tiers are available?",
+    "What is the 401(k) matching policy?",
+    "What are the quarterly review cycles?",
+  ],
+  general: [
+    "What are the core quarterly milestones from the all-hands?",
+    "What is the remote work policy?",
+    "What are the company values?",
+    "What public announcements were made at Q3 all-hands?",
+  ],
+  admin: [
+    "What is our ASC 606 revenue recognition policy?",
+    "What are the liability caps in the master services agreement?",
+    "What is the parental leave policy?",
+    "What are the core quarterly milestones from the all-hands?",
+  ],
+};
 
 export function Layout() {
   const { 
@@ -23,6 +57,9 @@ export function Layout() {
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [metricsData, setMetricsData] = useState<any>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +100,29 @@ export function Layout() {
     }
   }, [messages, sendMessage]);
 
+  // Fetch admin metrics
+  const fetchMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const response = await fetch("/api/v1/admin/metrics?hours=24", {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMetricsData(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch metrics:", err);
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
+  const handlePromptClick = useCallback((prompt: string) => {
+    setInput(prompt);
+    handleSendMessage({ preventDefault: () => {} } as React.FormEvent);
+  }, [handleSendMessage]);
+
   const currentRole = impersonateRole || "general";
   const ROLE_LABELS: Record<string, string> = {
     general: "General",
@@ -100,6 +160,21 @@ export function Layout() {
 
             {/* Right side - Status indicators */}
             <div className="flex items-center gap-4">
+              {/* Metrics button (admin only) */}
+              {(impersonateRole === "admin" || currentRole === "admin") && (
+                <button
+                  onClick={() => {
+                    setShowMetrics(!showMetrics);
+                    if (!showMetrics) fetchMetrics();
+                  }}
+                  className={`p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${showMetrics ? "bg-gray-100 dark:bg-gray-800 text-blue-600" : ""}`}
+                  aria-label="Toggle metrics panel"
+                  title="Telemetry Metrics"
+                >
+                  <BarChart2 className="w-5 h-5" />
+                </button>
+              )}
+
               {/* Connection status */}
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <span className="relative flex h-2 w-2">
@@ -184,14 +259,43 @@ export function Layout() {
           >
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 dark:text-gray-400">
-                <Bot className="w-16 h-16 mb-4 opacity-50" />
+                <Bot className="w-16 h-16 mb-6 opacity-50" />
                 <h2 className="text-xl font-medium text-gray-900 dark:text-white mb-2">
                   Welcome to OmniSift
                 </h2>
-                <p className="max-w-md text-sm">
+                <p className="max-w-md text-sm mb-6">
                   Upload documents and ask questions. I&apos;ll search through your documents 
                   and provide answers with citations.
                 </p>
+                
+                {/* Suggested Prompt Chips */}
+                <div className="w-full max-w-2xl">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                    <Lightbulb className="w-4 h-4" />
+                    Suggested for <span className="capitalize text-blue-600 dark:text-blue-400">{currentRole}</span>:
+                  </p>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {ROLE_PROMPTS[currentRole]?.map((prompt, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handlePromptClick(prompt)}
+                        disabled={isStreaming}
+                        className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-blue-300 dark:hover:border-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* RBAC Comparison Prompt */}
+                  {currentRole === "general" && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">
+                      Try asking about <span className="font-medium text-red-600 dark:text-red-400">"Q3 cash burn"</span> 
+                      while in General role to see RBAC guard in action
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -318,6 +422,139 @@ export function Layout() {
           documentId={selectedSourceId} 
           onClose={closeDrawer} 
         />
+
+        {/* Admin Metrics Drawer */}
+        {showMetrics && (
+          <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/20 lg:items-center lg:justify-end">
+            <div className="w-full lg:w-96 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl h-full lg:h-[600px] flex flex-col animate-slide-in-right">
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <BarChart2 className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Telemetry Metrics (24h)</h3>
+                </div>
+                <button
+                  onClick={() => setShowMetrics(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  aria-label="Close metrics"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                {metricsLoading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                  </div>
+                ) : metricsData ? (
+                  <>
+                    {/* Total Queries */}
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Overview</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900 dark:text-white">{metricsData.total_queries}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Total Queries</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">${metricsData.cost.total_cost_usd.toFixed(4)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Total Cost</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900 dark:text-white">{metricsData.tokens.total_prompt_tokens + metricsData.tokens.total_completion_tokens}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Total Tokens</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900 dark:text-white">{(metricsData.context.sufficient_context_rate * 100).toFixed(1)}%</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Context Sufficiency</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Latency Breakdown */}
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Latency (ms)</h4>
+                      <div className="space-y-3">
+                        {[
+                          { label: "Total", p50: metricsData.latency.total_p50_ms, p95: metricsData.latency.total_p95_ms },
+                          { label: "Retrieval", p50: metricsData.latency.retrieval_p50_ms, p95: metricsData.latency.retrieval_p95_ms },
+                          { label: "Re-ranking", p50: metricsData.latency.rerank_p50_ms, p95: metricsData.latency.rerank_p95_ms },
+                          { label: "Generation", p50: metricsData.latency.generation_p50_ms, p95: metricsData.latency.generation_p95_ms },
+                        ].map((item) => (
+                          <div key={item.label} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-700 dark:text-gray-300">{item.label}</span>
+                            <div className="flex items-center gap-3 text-right">
+                              <span className="text-sm font-mono text-gray-900 dark:text-white">{item.p50}ms</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">p50</span>
+                              <span className="text-sm font-mono text-gray-900 dark:text-white">{item.p95}ms</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">p95</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Token Usage */}
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Token Usage</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Prompt Tokens</p>
+                          <p className="text-lg font-mono text-gray-900 dark:text-white">{metricsData.tokens.total_prompt_tokens.toLocaleString()}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Avg: {metricsData.tokens.avg_prompt_tokens}/query</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Completion Tokens</p>
+                          <p className="text-lg font-mono text-gray-900 dark:text-white">{metricsData.tokens.total_completion_tokens.toLocaleString()}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Avg: {metricsData.tokens.avg_completion_tokens}/query</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Avg Cost/Query</p>
+                        <p className="text-lg font-mono text-blue-600 dark:text-blue-400">${metricsData.cost.avg_cost_per_query_usd.toFixed(6)}</p>
+                      </div>
+                    </div>
+
+                    {/* Context & Blocking */}
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Context & Blocking</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Sufficient Context Rate</p>
+                          <p className="text-lg font-mono text-green-600 dark:text-green-400">{(metricsData.context.sufficient_context_rate * 100).toFixed(1)}%</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Blocked by Confidence Floor</p>
+                          <p className="text-lg font-mono text-orange-600 dark:text-orange-400">{metricsData.context.blocked_by_confidence_floor}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Blocked by RBAC</p>
+                          <p className="text-lg font-mono text-red-600 dark:text-red-400">{metricsData.context.blocked_by_rbac}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Time Window</p>
+                          <p className="text-lg font-mono text-gray-900 dark:text-white">{metricsData.time_window_hours}h</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                    <p>No metrics data available</p>
+                    <button
+                      onClick={fetchMetrics}
+                      className="mt-2 text-sm text-blue-600 hover:underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

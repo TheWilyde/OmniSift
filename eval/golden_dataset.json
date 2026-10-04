@@ -1,0 +1,164 @@
+[
+  {
+    "question": "What is the revenue recognition policy under ASC 606?",
+    "ground_truth_answer": "Under ASC 606, revenue is recognized when control of goods or services transfers to the customer. For subscription contracts, revenue is recognized ratably over the contract term. Implementation fees are recognized upon completion of onboarding milestones.",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What was our ARR as of Q3 2024?",
+    "ground_truth_answer": "$180M (up 22% YoY)",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What is the contract value for account ACC-2024-0042?",
+    "ground_truth_answer": "$2.4M over 3 years",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What is the incident response protocol for PII breaches?",
+    "ground_truth_answer": "For PII breaches: 1. Immediate containment within 4 hours of detection. 2. Legal notification within 24 hours per GDPR Article 33. 3. Customer communication within 72 hours. 4. Full forensic report within 30 days. The privacy team handles all client data incidents through the secure portal.",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What are the indemnification limits in the master services agreement?",
+    "ground_truth_answer": "The master services agreement caps total liability at the fees paid in the preceding 12 months, except for breaches of confidentiality, IP infringement, or gross negligence which have separate caps.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What are the NDA terms in the vendor MSA?",
+    "ground_truth_answer": "The NDA requires 3-year confidentiality period post-termination, covers all non-public information exchanged, and permits disclosure only to personnel with need-to-know who are bound by equivalent confidentiality obligations.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What jurisdiction governs the master services agreement?",
+    "ground_truth_answer": "The agreement is governed by Delaware law with exclusive jurisdiction in Delaware state and federal courts.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What is the remote work policy effective January 2024?",
+    "ground_truth_answer": "All employees may work remotely up to 3 days per week. Team leads must approve schedules in advance. Core hours are 10am-3pm EST.",
+    "required_role": "general",
+    "expected_source_file": "company_policy_handbook.md"
+  },
+  {
+    "question": "What are the data classification levels?",
+    "ground_truth_answer": "Four levels: Public (marketing materials, press releases), Internal (org charts, meeting notes), Confidential (customer lists, financial projections), Restricted (PII, credentials, encryption keys).",
+    "required_role": "general",
+    "expected_source_file": "company_policy_handbook.md"
+  },
+  {
+    "question": "What are the expense reimbursement per diem rates?",
+    "ground_truth_answer": "$75/day domestic, $120/day international. Submit within 30 days with receipts.",
+    "required_role": "general",
+    "expected_source_file": "company_policy_handbook.md"
+  },
+  {
+    "question": "What health insurance tiers are available?",
+    "ground_truth_answer": "Three tiers: Bronze, Silver, Gold. Company covers 80% of premiums. Open enrollment: November 1-15 annually.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What is the 401(k) matching policy?",
+    "ground_truth_answer": "100% match on first 4% of salary. Vesting is immediate. Roth and traditional options available.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What is the parental leave policy?",
+    "ground_truth_answer": "12 weeks paid at 100% for primary caregivers. 4 weeks paid at 100% for secondary caregivers. Additional 4 weeks unpaid available.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What were the key product milestones from the Q3 all-hands?",
+    "ground_truth_answer": "Launched v3.2 with AI-powered search, reached 10K MAU, released mobile SDK beta, and announced partnership with CloudProvider Inc.",
+    "required_role": "general",
+    "expected_source_file": "company_all_hands_q3.md"
+  },
+  {
+    "question": "What are the company values announced at the all-hands?",
+    "ground_truth_answer": "Customer obsession, intellectual honesty, bias for action, and inclusive excellence.",
+    "required_role": "general",
+    "expected_source_file": "company_all_hands_q3.md"
+  },
+  {
+    "question": "What was the net runway as of Q3 2024?",
+    "ground_truth_answer": "18 months at current burn rate with $45M cash on hand.",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What is the termination for convenience clause in the MSA?",
+    "ground_truth_answer": "Either party may terminate for convenience with 60 days written notice. Customer pays for services rendered through termination date plus any non-cancellable third-party commitments.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What security awareness training is required?",
+    "ground_truth_answer": "Annual training required for all staff. Phishing simulations conducted quarterly. Report suspicious emails to security@company.com.",
+    "required_role": "general",
+    "expected_source_file": "company_policy_handbook.md"
+  },
+  {
+    "question": "What is the PTO policy for 2024?",
+    "ground_truth_answer": "15 days PTO accrual per year for first 3 years, 20 days thereafter. 10 company holidays. Unlimited sick days with manager approval for >3 consecutive days.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What is the remote work stipend?",
+    "ground_truth_answer": "$500 annual home office stipend. One-time $300 equipment allowance for new hires. Ergonomic assessment available upon request.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What was the Q3 2024 cash burn rate?",
+    "ground_truth_answer": "$2.5M/month average, with $45M cash on hand providing 18 months runway.",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What are the service level commitments in the MSA?",
+    "ground_truth_answer": "99.9% uptime SLA with service credits: 10% for <99.9%, 25% for <99.5%, 50% for <99.0%. Measured monthly.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What are the quarterly review cycles for employees?",
+    "ground_truth_answer": "Quarterly check-ins with managers. Formal reviews semi-annually (June/December). Rating scale: Exceeds, Meets, Developing, Needs Improvement.",
+    "required_role": "hr",
+    "expected_source_file": "employee_handbook_2024.md"
+  },
+  {
+    "question": "What public announcements were made at the Q3 all-hands?",
+    "ground_truth_answer": "Series C funding of $50M led by VentureCapital Partners, expansion to EMEA region, and new board member appointment.",
+    "required_role": "general",
+    "expected_source_file": "company_all_hands_q3.md"
+  },
+  {
+    "question": "What is the gross margin reported in Q3 2024?",
+    "ground_truth_answer": "78% gross margin",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  },
+  {
+    "question": "What is the force majeure clause in the MSA?",
+    "ground_truth_answer": "Neither party liable for delays due to events beyond reasonable control (natural disasters, war, pandemics, government actions). Affected party must notify within 5 days and use reasonable efforts to mitigate.",
+    "required_role": "legal",
+    "expected_source_file": "vendor_master_services_agreement.md"
+  },
+  {
+    "question": "What is the NRR (Net Revenue Retention) as of Q3 2024?",
+    "ground_truth_answer": "118% (best in class)",
+    "required_role": "finance",
+    "expected_source_file": "q3_2024_financial_report.md"
+  }
+]

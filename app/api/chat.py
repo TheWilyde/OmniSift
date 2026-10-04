@@ -1,5 +1,6 @@
 """Chat streaming API endpoint with SSE protocol."""
 
+import asyncio
 import json
 import time
 import uuid
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 from sse_starlette import EventSourceResponse
 
 from app.api.deps import get_current_user, optional_impersonation
+from app.schemas.auth import UserContext
 from app.schemas.document import HybridSearchResponse
 from app.services.hybrid_search import get_hybrid_search_service_global as get_hybrid_search_service
 from app.services.embedding_service import create_embedding_provider
@@ -20,6 +22,7 @@ from app.services.prompt_service import (
     validate_context_sufficiency,
     INSUFFICIENT_CONTEXT_MESSAGE,
 )
+from app.services.telemetry_service import log_query_async
 from app.core.config import settings
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -78,6 +81,8 @@ async def stream_chat_response(
     top_k: int,
     temperature: Optional[float],
     max_tokens: Optional[int],
+    user_id: Optional[uuid.UUID] = None,
+    role: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Generator that yields SSE events for the chat stream.
@@ -89,6 +94,15 @@ async def stream_chat_response(
     """
     request_id = str(uuid.uuid4())[:8]
     start_time = time.perf_counter()
+    
+    # Telemetry accumulators
+    prompt_tokens = 0
+    completion_tokens = 0
+    finish_reason = "completed"
+    generation_latency = 0.0
+    search_response = None
+    retrieval_latency = 0.0
+    should_generate = False
     
     try:
         # Step A: Run hybrid retrieval + re-ranking
@@ -156,6 +170,7 @@ async def stream_chat_response(
             yield format_sse_event("text", {"delta": refusal_msg})
             
             # Stage 3: Done event
+            finish_reason = "insufficient_context"
             done = DoneEvent(
                 generation_metrics={
                     "generation_latency_ms": 0,
@@ -163,9 +178,28 @@ async def stream_chat_response(
                     "prompt_tokens": 0,
                     "completion_tokens": 0,
                 },
-                finish_reason="insufficient_context",
+                finish_reason=finish_reason,
             )
             yield format_sse_event("done", done.model_dump())
+            
+            # Log telemetry for insufficient context
+            total_latency = (time.perf_counter() - start_time) * 1000
+            asyncio.create_task(log_query_async(
+                user_id=user_id,
+                role=role,
+                query_text=query,
+                dense_matches_count=search_response.dense_match_count,
+                sparse_matches_count=search_response.sparse_match_count,
+                relevance_scores=[p.relevance_score for p in search_response.resolved_parents if p.relevance_score],
+                retrieval_latency_ms=retrieval_latency,
+                rerank_latency_ms=search_response.rerank_latency_ms,
+                generation_latency_ms=0.0,
+                total_latency_ms=total_latency,
+                prompt_tokens=0,
+                completion_tokens=0,
+                has_sufficient_context=False,
+                finish_reason=finish_reason,
+            ))
             return
         
         # Step C: Build prompt and stream LLM
@@ -176,8 +210,6 @@ async def stream_chat_response(
         gen_start = time.perf_counter()
         
         accumulated_text = ""
-        prompt_tokens = 0
-        completion_tokens = 0
         
         async for chunk in llm_service.stream_chat(
             messages=messages,
@@ -194,6 +226,7 @@ async def stream_chat_response(
                 yield format_sse_event("text", {"delta": chunk.delta})
             
             if chunk.finish_reason:
+                finish_reason = chunk.finish_reason
                 if chunk.usage:
                     prompt_tokens = chunk.usage.get("prompt_tokens", 0)
                     completion_tokens = chunk.usage.get("completion_tokens", 0)
@@ -209,20 +242,70 @@ async def stream_chat_response(
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
             },
-            finish_reason=chunk.finish_reason if 'chunk' in dir() else "completed",
+            finish_reason=finish_reason,
         )
         yield format_sse_event("done", done.model_dump())
+        
+        # Log telemetry after response completes (fire-and-forget)
+        total_latency = (time.perf_counter() - start_time) * 1000
+        relevance_scores = [p.relevance_score for p in search_response.resolved_parents if p.relevance_score]
+        asyncio.create_task(log_query_async(
+            user_id=user_id,
+            role=role,
+            query_text=query,
+            dense_matches_count=search_response.dense_match_count,
+            sparse_matches_count=search_response.sparse_match_count,
+            relevance_scores=relevance_scores,
+            retrieval_latency_ms=retrieval_latency,
+            rerank_latency_ms=search_response.rerank_latency_ms,
+            generation_latency_ms=generation_latency,
+            total_latency_ms=total_latency,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            has_sufficient_context=search_response.has_sufficient_context,
+            finish_reason=finish_reason,
+        ))
         
     except Exception as e:
         # Error event
         yield format_sse_event("error", {"error": str(e), "request_id": request_id})
+        
+        # Log error telemetry
+        total_latency = (time.perf_counter() - start_time) * 1000
+        if search_response:
+            relevance_scores = [p.relevance_score for p in search_response.resolved_parents if p.relevance_score]
+            dense_count = search_response.dense_match_count
+            sparse_count = search_response.sparse_match_count
+            has_context = search_response.has_sufficient_context
+        else:
+            relevance_scores = []
+            dense_count = 0
+            sparse_count = 0
+            has_context = False
+        
+        asyncio.create_task(log_query_async(
+            user_id=user_id,
+            role=role,
+            query_text=query,
+            dense_matches_count=dense_count,
+            sparse_matches_count=sparse_count,
+            relevance_scores=relevance_scores,
+            retrieval_latency_ms=retrieval_latency,
+            rerank_latency_ms=search_response.rerank_latency_ms if search_response else 0.0,
+            generation_latency_ms=generation_latency,
+            total_latency_ms=total_latency,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            has_sufficient_context=has_context,
+            finish_reason="error",
+        ))
 
 
 @router.post("/stream")
 async def chat_stream(
     request: Request,
     body: ChatStreamRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: UserContext = Depends(get_current_user),
     impersonated_roles: Optional[List[str]] = Depends(optional_impersonation),
 ):
     """
@@ -237,8 +320,12 @@ async def chat_stream(
     # Determine effective roles (impersonation takes precedence in dev)
     if impersonated_roles is not None:
         user_roles = impersonated_roles
+        role = impersonated_roles[0] if impersonated_roles else "general"
     else:
-        user_roles = current_user.get("roles", ["general"])
+        user_roles = current_user.roles
+        role = user_roles[0] if user_roles else "general"
+    
+    user_id = current_user.user_id
     
     return EventSourceResponse(
         stream_chat_response(
@@ -249,6 +336,8 @@ async def chat_stream(
             top_k=body.top_k,
             temperature=body.temperature,
             max_tokens=body.max_tokens,
+            user_id=user_id,
+            role=role,
         ),
         media_type="text/event-stream",
         headers={
@@ -262,7 +351,7 @@ async def chat_stream(
 @router.post("/complete")
 async def chat_complete(
     body: ChatStreamRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: UserContext = Depends(get_current_user),
     impersonated_roles: Optional[List[str]] = Depends(optional_impersonation),
 ):
     """
@@ -271,8 +360,14 @@ async def chat_complete(
     """
     if impersonated_roles is not None:
         user_roles = impersonated_roles
+        role = impersonated_roles[0] if impersonated_roles else "general"
     else:
-        user_roles = current_user.get("roles", ["general"])
+        user_roles = current_user.roles
+        role = user_roles[0] if user_roles else "general"
+    
+    user_id = current_user.user_id
+    
+    start_time = time.perf_counter()
     
     # Run retrieval
     # First generate query embedding
@@ -288,9 +383,30 @@ async def chat_complete(
         rerank_top_k=body.top_k,
     )
     
+    retrieval_latency = (time.perf_counter() - start_time) * 1000
+    
     should_generate, refusal_msg = validate_context_sufficiency(search_response.has_sufficient_context)
     
     if not should_generate:
+        total_latency = (time.perf_counter() - start_time) * 1000
+        # Log telemetry for insufficient context
+        asyncio.create_task(log_query_async(
+            user_id=user_id,
+            role=role,
+            query_text=body.message,
+            dense_matches_count=search_response.dense_match_count,
+            sparse_matches_count=search_response.sparse_match_count,
+            relevance_scores=[p.relevance_score for p in search_response.resolved_parents if p.relevance_score],
+            retrieval_latency_ms=retrieval_latency,
+            rerank_latency_ms=search_response.rerank_latency_ms,
+            generation_latency_ms=0.0,
+            total_latency_ms=total_latency,
+            prompt_tokens=0,
+            completion_tokens=0,
+            has_sufficient_context=False,
+            finish_reason="insufficient_context",
+        ))
+        
         return {
             "response": refusal_msg,
             "has_sufficient_context": False,
@@ -307,11 +423,15 @@ async def chat_complete(
     messages = build_messages(body.message, search_response.resolved_parents, history_dicts)
     
     llm_service = get_llm_service()
+    gen_start = time.perf_counter()
     response_text, metrics = await llm_service.generate_chat(
         messages=messages,
         temperature=body.temperature,
         max_tokens=body.max_tokens,
     )
+    
+    generation_latency = (time.perf_counter() - gen_start) * 1000
+    total_latency = (time.perf_counter() - start_time) * 1000
     
     # Build citations from parent chunks
     citations = [
@@ -324,6 +444,24 @@ async def chat_complete(
         }
         for parent in search_response.resolved_parents
     ]
+    
+    # Log telemetry (fire-and-forget)
+    asyncio.create_task(log_query_async(
+        user_id=user_id,
+        role=role,
+        query_text=body.message,
+        dense_matches_count=search_response.dense_match_count,
+        sparse_matches_count=search_response.sparse_match_count,
+        relevance_scores=[p.relevance_score for p in search_response.resolved_parents if p.relevance_score],
+        retrieval_latency_ms=retrieval_latency,
+        rerank_latency_ms=search_response.rerank_latency_ms,
+        generation_latency_ms=generation_latency,
+        total_latency_ms=total_latency,
+        prompt_tokens=metrics.prompt_tokens,
+        completion_tokens=metrics.completion_tokens,
+        has_sufficient_context=True,
+        finish_reason=metrics.finish_reason,
+    ))
     
     return {
         "response": response_text,
