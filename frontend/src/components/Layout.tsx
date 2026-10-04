@@ -1,70 +1,75 @@
 "use client";
 
-import { useAuthStore } from "@/lib/store";
+import { useChatStore } from "@/lib/store";
+import { useRagChat } from "@/hooks/useRagChat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { DocumentDrawer } from "@/components/DocumentDrawer";
-import { Menu, X, Bot, MessageSquare, Send, Paperclip, ChevronRight } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { MessageRenderer } from "@/components/CitationBadge";
+import { Menu, X, Bot, MessageSquare, Send, Paperclip, Loader2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout() {
   const { 
-    selectedDocumentId, 
-    setSelectedDocumentId, 
-    isDrawerOpen, 
-    setDrawerOpen,
-    impersonateRole 
-  } = useAuthStore();
+    messages, 
+    clearMessages,
+    selectedSourceId, 
+    activeSourceMetadata,
+    closeDrawer,
+    impersonateRole,
+    setImpersonateRole,
+  } = useChatStore();
+  
+  const { sendMessage, isStreaming, error, clearError } = useRagChat();
   
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isStreaming) return;
 
     const userMessage = input;
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setInput("");
-    setIsLoading(true);
+    await sendMessage(userMessage);
+  }, [input, isStreaming, sendMessage]);
 
-    try {
-      // In a real implementation, this would call the backend chat API
-      // For now, simulate a response
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setMessages((prev) => [
-        ...prev,
-        { 
-          role: "assistant", 
-          content: `I received your message: "${userMessage}". This is a simulated response. In the full implementation, this would query the vector database and return relevant document chunks with citations.` 
-        }
-      ]);
-    } catch (error) {
-      console.error("Failed to send message:", error);
-    } finally {
-      setIsLoading(false);
+  const handleRoleChange = useCallback((role: string | null) => {
+    setImpersonateRole(role as typeof impersonateRole);
+    // Messages are cleared in the store's setImpersonateRole
+  }, [setImpersonateRole]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
     }
-  };
+  }, [handleSendMessage]);
 
-  const handleDocumentClick = (docId: string) => {
-    setSelectedDocumentId(docId);
-    setDrawerOpen(true);
-  };
+  const retryLastMessage = useCallback(() => {
+    if (messages.length === 0) return;
+    const lastUserMessage = [...messages].reverse().find(m => m.role === "user");
+    if (lastUserMessage) {
+      sendMessage(lastUserMessage.content);
+    }
+  }, [messages, sendMessage]);
 
-  const closeDrawer = () => {
-    setDrawerOpen(false);
-    setSelectedDocumentId(null);
+  const currentRole = impersonateRole || "general";
+  const ROLE_LABELS: Record<string, string> = {
+    general: "General",
+    finance: "Finance",
+    legal: "Legal",
+    admin: "Admin",
+    hr: "Human Resources",
   };
 
   return (
@@ -90,7 +95,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Center - Role switcher (visible on desktop) */}
             <div className="hidden lg:flex items-center">
-              <RoleSwitcher />
+              <RoleSwitcher onRoleChange={handleRoleChange} />
             </div>
 
             {/* Right side - Status indicators */}
@@ -104,9 +109,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span>API Connected</span>
               </div>
 
+              {/* Error indicator */}
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{error}</span>
+                  <button onClick={clearError} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/50 rounded">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
               {/* Role switcher on mobile */}
               <div className="lg:hidden">
-                <RoleSwitcher />
+                <RoleSwitcher onRoleChange={handleRoleChange} />
               </div>
             </div>
           </div>
@@ -129,7 +145,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span>Documents</span>
                 </button>
               </nav>
-              <RoleSwitcher />
+              <RoleSwitcher onRoleChange={handleRoleChange} />
             </div>
           </aside>
         )}
@@ -137,11 +153,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Main Chat Panel */}
         <div className={`flex-1 flex flex-col ${sidebarOpen ? "lg:ml-0" : ""} transition-all duration-300`}>
           {/* Chat Header */}
-          <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3">
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Ask questions about your documents
-            </p>
+          <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Chat</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Ask questions about your documents
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-full capitalize">
+                {ROLE_LABELS[currentRole]} Mode
+              </span>
+              {messages.length > 0 && (
+                <button
+                  onClick={() => clearMessages()}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  aria-label="Clear conversation"
+                  title="Clear conversation"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Messages Area */}
@@ -156,7 +189,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   Welcome to OmniSift
                 </h2>
                 <p className="max-w-md text-sm">
-                  Upload documents and ask questions. I'll search through your documents 
+                  Upload documents and ask questions. I&apos;ll search through your documents 
                   and provide answers with citations.
                 </p>
               </div>
@@ -164,20 +197,68 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <>
                 {messages.map((message, index) => (
                   <div
-                    key={index}
-                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                    key={`${message.id}-${index}`}
+                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"} message-enter`}
                   >
                     <div
-                      className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                         message.role === "user"
                           ? "bg-blue-600 text-white rounded-br-md"
                           : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-bl-md"
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      {message.role === "assistant" && message.sources && message.sources.length > 0 ? (
+                        <MessageRenderer
+                          content={message.content}
+                          sources={message.sources}
+                          selectedSourceId={selectedSourceId}
+                          onSelectCitation={(sourceId) => {
+                            const fullSource = activeSourceMetadata?.source_id === sourceId 
+                              ? activeSourceMetadata 
+                              : message.sources?.find(s => s.source_id === sourceId);
+                            if (fullSource) {
+                              useChatStore.getState().selectCitation(sourceId, fullSource);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      )}
+                      
+                      {/* Generation metrics for assistant messages */}
+                      {message.role === "assistant" && message.generationMetrics && (
+                        <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400">
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="w-3 h-3" />
+                            {message.generationMetrics.generation_latency_ms.toFixed(0)}ms
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-3" />
+                            {message.generationMetrics.total_tokens} tokens
+                          </span>
+                          {message.finishReason && (
+                            <span className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-[9px]">
+                              {message.finishReason}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
+                
+                {/* Streaming indicator */}
+                {isStreaming && (
+                  <div className="flex gap-3 justify-start">
+                    <div className="max-w-[75%] bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl rounded-bl-md px-4 py-2.5">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                        <span className="text-gray-500 dark:text-gray-400">Generating response...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div ref={messagesEndRef} />
               </>
             )}
@@ -190,6 +271,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 aria-label="Attach file"
+                disabled={isStreaming}
               >
                 <Paperclip className="w-5 h-5" />
               </button>
@@ -198,13 +280,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask a question about your documents..."
-                  className="w-full px-4 py-2.5 pr-12 border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={isLoading}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isStreaming ? "Waiting for response..." : "Ask a question about your documents..."}
+                  className="w-full px-4 py-2.5 pr-12 border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800"
+                  disabled={isStreaming}
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim() || isLoading}
+                  disabled={!input.trim() || isStreaming}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   aria-label="Send message"
                 >
@@ -212,15 +295,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-              Press Enter to send • Shift+Enter for new line
-            </p>
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Press Enter to send • Shift+Enter for new line
+              </p>
+              {error && (
+                <button
+                  type="button"
+                  onClick={retryLastMessage}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry
+                </button>
+              )}
+            </div>
           </form>
         </div>
 
         {/* Document Preview Drawer */}
         <DocumentDrawer 
-          documentId={selectedDocumentId} 
+          documentId={selectedSourceId} 
           onClose={closeDrawer} 
         />
       </main>

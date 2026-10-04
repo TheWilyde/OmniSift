@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuthStore } from "@/lib/store";
-import { ChevronDown, User, Shield, Briefcase, Scale, Gavel, Users } from "lucide-react";
+import { ChevronDown, User, Shield, Briefcase, Scale, Users } from "lucide-react";
 import { useState } from "react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -22,12 +22,22 @@ const ROLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 
 const VALID_ROLES = ["general", "finance", "legal", "admin", "hr"] as const;
 
-export function RoleSwitcher() {
+interface RoleSwitcherProps {
+  onRoleChange?: (role: string | null) => void;
+}
+
+export function RoleSwitcher({ onRoleChange }: RoleSwitcherProps) {
   const { impersonateRole, setImpersonateRole } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
 
   const currentRole = impersonateRole || "general";
   const CurrentIcon = ROLE_ICONS[currentRole] || User;
+
+  const handleRoleSelect = (role: string) => {
+    setImpersonateRole(role as typeof impersonateRole);
+    setIsOpen(false);
+    onRoleChange?.(role);
+  };
 
   return (
     <div className="relative">
@@ -60,10 +70,7 @@ export function RoleSwitcher() {
                 <button
                   key={role}
                   type="button"
-                  onClick={() => {
-                    setImpersonateRole(role);
-                    setIsOpen(false);
-                  }}
+                  onClick={() => handleRoleSelect(role)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
                     role === currentRole
                       ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
