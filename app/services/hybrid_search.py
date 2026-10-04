@@ -191,6 +191,7 @@ class HybridSearchService:
             retrieval_latency_ms=retrieval_latency_ms,
             rerank_latency_ms=0.0,
             total_latency_ms=retrieval_latency_ms,
+            relevance_threshold=settings.relevance_score_threshold,
         )
 
     async def _resolve_parent_chunks(self, child_rows: List[Dict[str, Any]]) -> List[ResolvedParentChunk]:
@@ -215,18 +216,24 @@ class HybridSearchService:
         # Get unique parent IDs
         parent_ids = list(parent_to_children.keys())
 
-        # Fetch parent chunks from database
-        parent_query = select(ParentChunk).where(ParentChunk.id.in_(parent_ids))
+        # Fetch parent chunks from database with document titles
+        parent_query = (
+            select(ParentChunk, Document.title)
+            .join(Document, ParentChunk.document_id == Document.id)
+            .where(ParentChunk.id.in_(parent_ids))
+        )
         parent_result = await self.session.execute(parent_query)
-        parent_chunks = {pc.id: pc for pc in parent_result.scalars().all()}
+        parent_chunks = {pc.id: (pc, title) for pc, title in parent_result.all()}
 
         # Build resolved parent chunks
         resolved = []
         for parent_id, children in parent_to_children.items():
-            parent_chunk = parent_chunks.get(parent_id)
-            if not parent_chunk:
+            parent_data = parent_chunks.get(parent_id)
+            if not parent_data:
                 logger.warning(f"Parent chunk {parent_id} not found in database")
                 continue
+            
+            parent_chunk, document_title = parent_data
 
             # Sort children by fused_score descending
             children_sorted = sorted(children, key=lambda c: c["fused_score"], reverse=True)
@@ -253,6 +260,7 @@ class HybridSearchService:
                 ResolvedParentChunk(
                     id=parent_chunk.id,
                     document_id=parent_chunk.document_id,
+                    document_title=document_title,
                     chunk_index=parent_chunk.chunk_index,
                     content=parent_chunk.content,
                     token_count=parent_chunk.token_count,
@@ -476,3 +484,30 @@ async def get_hybrid_search_service(session: AsyncSession) -> HybridSearchServic
     """Dependency injection for HybridSearchService with reranker."""
     reranker = RerankerService()
     return HybridSearchService(session, reranker=reranker)
+
+
+# Global instance for use in non-DI contexts (e.g., streaming endpoints)
+# Lazy initialization - will be set on first use
+_hybrid_search_service: HybridSearchService | None = None
+
+
+async def _get_global_hybrid_search_service() -> HybridSearchService:
+    """Get or create global hybrid search service instance."""
+    global _hybrid_search_service
+    if _hybrid_search_service is None:
+        from app.core.database import async_session_maker
+        from app.services.reranker_service import RerankerService
+        session = async_session_maker()
+        reranker = RerankerService()
+        _hybrid_search_service = HybridSearchService(session, reranker=reranker)
+    return _hybrid_search_service
+
+
+# Export a callable that returns the service (for use in endpoints)
+async def get_hybrid_search_service_global() -> HybridSearchService:
+    """Get the global hybrid search service instance."""
+    return await _get_global_hybrid_search_service()
+
+
+# For backwards compatibility with existing imports
+hybrid_search_service = None  # Will be set by get_hybrid_search_service_global()

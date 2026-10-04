@@ -184,6 +184,7 @@ class ResolvedParentChunk(BaseModel):
 
     id: uuid.UUID
     document_id: uuid.UUID
+    document_title: str
     chunk_index: int
     content: str
     token_count: int
@@ -212,6 +213,7 @@ class HybridSearchResponse(BaseModel):
     retrieval_latency_ms: float
     rerank_latency_ms: float
     total_latency_ms: float
+    relevance_threshold: float = 0.25
 
 
 class RetrievalDebugRequest(BaseModel):

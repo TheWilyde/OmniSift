@@ -159,3 +159,32 @@ require_admin = require_role("admin")
 require_finance = require_role("finance")
 require_legal = require_role("legal")
 require_general = require_role("general")
+
+
+async def optional_impersonation(
+    request: Request,
+) -> Optional[List[str]]:
+    """
+    Extract impersonated roles from X-Impersonate-Role header.
+    Returns None if no impersonation header (use token roles instead).
+    Returns list of roles if header present (dev mode only).
+    """
+    if settings.environment != "development":
+        return None
+    
+    impersonate_role = request.headers.get("X-Impersonate-Role")
+    if not impersonate_role:
+        return None
+    
+    # Support comma-separated roles for testing multiple roles
+    roles = [r.strip() for r in impersonate_role.split(",")]
+    valid_roles = ["general", "finance", "legal", "admin", "hr"]
+    
+    for role in roles:
+        if role not in valid_roles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid impersonation role: {role}. Valid roles: {valid_roles}",
+            )
+    
+    return roles

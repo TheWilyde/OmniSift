@@ -85,6 +85,16 @@ class Settings(BaseSettings):
     vector_similarity_threshold: float = 0.7
     vector_max_results: int = 10
 
+    # LLM (Generation)
+    llm_model: str = "gemini/gemini-3.8-flash"  # LiteLLM format: provider/model
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 4096
+    llm_top_p: float = 1.0
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
