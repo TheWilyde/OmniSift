@@ -62,9 +62,12 @@ class Settings(BaseSettings):
     ]
 
     # Embeddings
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 384
+    embedding_provider: str = "gemini"  # gemini, openai, local
+    embedding_model: str = "gemini-embedding-2"
+    embedding_dimension: int = 1536
     embedding_batch_size: int = 32
+    gemini_api_key: str = ""
+    gemini_output_dimensionality: int = 1536
 
     # Vector Search
     vector_similarity_threshold: float = 0.7

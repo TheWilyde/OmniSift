@@ -35,9 +35,10 @@ class DocumentUpdate(BaseModel):
 
 class DocumentResponse(DocumentBase):
     """Schema for document response."""
-    model_config = ConfigDict(from_attributes=False)
+    model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    duplicate: bool = False
     doc_metadata: Dict[str, Any] = Field(default_factory=dict)
     status: str
     created_at: datetime
@@ -45,9 +46,15 @@ class DocumentResponse(DocumentBase):
     processed_at: Optional[datetime] = None
 
 
+class DocumentListItem(DocumentResponse):
+    """Schema for document list item with chunk counts."""
+    parent_chunk_count: int = 0
+    child_chunk_count: int = 0
+
+
 class DocumentListResponse(BaseModel):
     """Schema for paginated document list response."""
-    items: List[DocumentResponse]
+    items: List[DocumentListItem]
     total: int
     page: int
     page_size: int

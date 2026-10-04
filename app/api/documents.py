@@ -1,9 +1,10 @@
 """Document API routes."""
 
+import json
 import uuid
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,7 @@ from app.schemas.document import (
     DocumentCreate,
     DocumentUpdate,
     DocumentResponse,
+    DocumentListItem,
     DocumentListResponse,
     DocumentChunkCreate,
     DocumentChunkResponse,
@@ -22,8 +24,15 @@ from app.schemas.document import (
     DocumentSearchResult,
 )
 from app.services.storage import storage_service
+from app.services.document_service import get_document_service, DocumentIngestionService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+# Wrapper to avoid FastAPI's dependency analysis issues
+async def get_doc_ingestion_service(
+    session: AsyncSession = Depends(get_async_session),
+) -> DocumentIngestionService:
+    return DocumentIngestionService(session)
 
 
 @router.post(
@@ -32,15 +41,45 @@ router = APIRouter(prefix="/documents", tags=["documents"])
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_document(
+    background_tasks: BackgroundTasks,
+    response: Response,
     file: UploadFile = File(...),
+    title: str = Form(...),
+    allowed_roles: str = Form(default='["general"]'),
+    metadata: str = Form(default="{}"),
     session: AsyncSession = Depends(get_async_session),
+    document_service: DocumentIngestionService = Depends(get_doc_ingestion_service),
 ) -> DocumentResponse:
-    """Upload a document to object storage and create metadata record."""
+    """Upload a document to object storage and create metadata record with processing status.
+    
+    Triggers background ingestion pipeline: parse → chunk → embed → persist.
+    """
     # Validate file type
     if file.content_type not in settings.allowed_file_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File type {file.content_type} not allowed. Allowed types: {settings.allowed_file_types}",
+        )
+
+    # Parse form fields
+    try:
+        allowed_roles_list = json.loads(allowed_roles)
+        if not isinstance(allowed_roles_list, list):
+            raise ValueError("allowed_roles must be a JSON array")
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid allowed_roles format: {e}",
+        )
+
+    try:
+        metadata_dict = json.loads(metadata)
+        if not isinstance(metadata_dict, dict):
+            raise ValueError("metadata must be a JSON object")
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid metadata format: {e}",
         )
 
     # Read file content
@@ -53,57 +92,41 @@ async def upload_document(
             detail=f"File size exceeds maximum allowed size of {settings.max_file_size_mb}MB",
         )
 
-    # Generate file hash (SHA-256)
-    import hashlib
-    file_hash = hashlib.sha256(content).hexdigest()
-    
-    # Check for duplicate
-    existing = await session.execute(select(Document).where(Document.file_hash == file_hash))
-    if existing.scalar_one_or_none():
+    # Validate file has content
+    if len(content) == 0:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Document with this content already exists",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty file not allowed",
         )
 
-    # Generate S3 key (file_path)
-    s3_key = f"{file_hash[:2]}/{file_hash[2:4]}/{file_hash}"
-
-    # Upload to object storage
-    upload_success = await storage_service.upload_bytes(
-        bucket_name=settings.s3_bucket_documents,
-        key=s3_key,
-        data=content,
-        content_type=file.content_type,
-        metadata={
-            "original_filename": file.filename or "unknown",
-            "file_hash": file_hash,
-        },
-    )
-
-    if not upload_success:
+    # Use document service for ingestion (creates record with status="processing")
+    try:
+        file_hash = await document_service.compute_file_hash(content)
+        existing_document = await document_service.check_duplicate(file_hash)
+        is_duplicate = existing_document is not None
+        document = await document_service.ingest_document(
+            file_content=content,
+            filename=file.filename or "unknown",
+            content_type=file.content_type,
+            title=title,
+            allowed_roles=allowed_roles_list,
+            doc_metadata=metadata_dict,
+        )
+    except RuntimeError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload file to object storage",
+            detail=str(e),
         )
 
-    # Create document record
-    document = Document(
-        title=file.filename or "unknown",
-        source_type="pdf" if file.content_type == "application/pdf" else "markdown" if file.content_type == "text/markdown" else "text",
-        file_path=s3_key,
-        file_hash=file_hash,
-        file_size_bytes=len(content),
-        content_type=file.content_type,
-        allowed_roles=["general"],  # Default role
-        doc_metadata={},
-        status="uploaded",
-    )
+    # Return a clear deduplication signal and do not run the pipeline twice.
+    if is_duplicate:
+        response.status_code = status.HTTP_200_OK
+    else:
+        background_tasks.add_task(document_service.process_document_pipeline, document.id)
 
-    session.add(document)
-    await session.commit()
-    await session.refresh(document)
-
-    return DocumentResponse.model_validate(document)
+    result = DocumentResponse.model_validate(document)
+    result.duplicate = is_duplicate
+    return result
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -113,7 +136,7 @@ async def list_documents(
     status_filter: Optional[str] = Query(None, alias="status"),
     session: AsyncSession = Depends(get_async_session),
 ) -> DocumentListResponse:
-    """List documents with pagination."""
+    """List documents with pagination, including chunk counts."""
     query = select(Document)
 
     if status_filter:
@@ -130,9 +153,21 @@ async def list_documents(
 
     total_pages = (total + page_size - 1) // page_size
 
-    # Convert documents to response models
+    # Convert documents to response models with chunk counts
     items = []
     for doc in documents:
+        # Count parent chunks
+        parent_count_result = await session.execute(
+            select(func.count(ParentChunk.id)).where(ParentChunk.document_id == doc.id)
+        )
+        parent_chunk_count = parent_count_result.scalar() or 0
+
+        # Count child chunks
+        child_count_result = await session.execute(
+            select(func.count(ChildChunk.id)).where(ChildChunk.document_id == doc.id)
+        )
+        child_chunk_count = child_count_result.scalar() or 0
+
         doc_data = {
             "id": doc.id,
             "title": doc.title,
@@ -147,8 +182,10 @@ async def list_documents(
             "created_at": doc.created_at,
             "updated_at": doc.updated_at,
             "processed_at": doc.processed_at,
+            "parent_chunk_count": parent_chunk_count,
+            "child_chunk_count": child_chunk_count,
         }
-        items.append(DocumentResponse.model_validate(doc_data))
+        items.append(DocumentListItem.model_validate(doc_data))
     
     return DocumentListResponse(
         items=items,
@@ -255,7 +292,11 @@ async def delete_document(
     document_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
-    """Delete a document and its file from object storage."""
+    """Delete a document and its file from object storage.
+    
+    PostgreSQL cascade deletion automatically removes all associated
+    parent_chunks and child_chunks due to foreign key constraints.
+    """
     result = await session.execute(select(Document).where(Document.id == document_id))
     document = result.scalar_one_or_none()
 
@@ -265,12 +306,38 @@ async def delete_document(
             detail="Document not found",
         )
 
+    # Verify chunk counts before deletion (for cascade verification)
+    parent_count_before = await session.scalar(
+        select(func.count(ParentChunk.id)).where(ParentChunk.document_id == document_id)
+    ) or 0
+    child_count_before = await session.scalar(
+        select(func.count(ChildChunk.id)).where(ChildChunk.document_id == document_id)
+    ) or 0
+
     # Delete from object storage
     await storage_service.delete_file(settings.s3_bucket_documents, document.file_path)
 
     # Delete from database (cascades to parent_chunks and child_chunks)
     await session.delete(document)
     await session.commit()
+
+    # Verify cascade deletion worked
+    parent_count_after = await session.scalar(
+        select(func.count(ParentChunk.id)).where(ParentChunk.document_id == document_id)
+    ) or 0
+    child_count_after = await session.scalar(
+        select(func.count(ChildChunk.id)).where(ChildChunk.document_id == document_id)
+    ) or 0
+
+    if parent_count_after > 0 or child_count_after > 0:
+        # This should never happen with proper cascade config
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Cascade deletion verification failed for document {document_id}: "
+            f"parent_chunks before={parent_count_before}, after={parent_count_after}; "
+            f"child_chunks before={child_count_before}, after={child_count_after}"
+        )
 
 
 @router.post("/{document_id}/parent-chunks", response_model=List[DocumentChunkResponse])
