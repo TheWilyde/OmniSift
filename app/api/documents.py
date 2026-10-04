@@ -1,6 +1,7 @@
 """Document API routes."""
 
 import json
+import logging
 import uuid
 from typing import Annotated, List, Optional
 
@@ -22,9 +23,14 @@ from app.schemas.document import (
     DocumentWithChunks,
     DocumentSearchRequest,
     DocumentSearchResult,
+    HybridSearchResponse,
 )
 from app.services.storage import storage_service
 from app.services.document_service import get_document_service, DocumentIngestionService
+from app.services.hybrid_search import get_hybrid_search_service, HybridSearchService
+from app.services.embedding_service import create_embedding_provider
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -33,6 +39,12 @@ async def get_doc_ingestion_service(
     session: AsyncSession = Depends(get_async_session),
 ) -> DocumentIngestionService:
     return DocumentIngestionService(session)
+
+
+async def get_hybrid_search_dep(
+    session: AsyncSession = Depends(get_async_session),
+) -> HybridSearchService:
+    return await get_hybrid_search_service(session)
 
 
 @router.post(
@@ -383,15 +395,36 @@ async def create_parent_chunks(
     return response_chunks
 
 
-@router.post("/search", response_model=List[DocumentSearchResult])
+@router.post("/search", response_model=HybridSearchResponse)
 async def search_documents(
     search_request: DocumentSearchRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> List[DocumentSearchResult]:
-    """Search documents using vector similarity."""
-    # This is a placeholder for vector search implementation
-    # Will be implemented with pgvector in the next phase
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Vector search not yet implemented",
+    hybrid_search_service: HybridSearchService = Depends(get_hybrid_search_dep),
+) -> HybridSearchResponse:
+    """Search documents using hybrid retrieval (dense + sparse) with RRF fusion,
+    returning resolved and re-ranked parent chunks for citations and highlighting."""
+    # Generate query embedding
+    try:
+        embedding_provider = create_embedding_provider()
+        query_embedding = await embedding_provider.embed_text(search_request.query)
+    except Exception as e:
+        logger.error(f"Failed to generate query embedding: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate query embedding",
+        )
+
+    # For now, use default roles - in production this would come from auth context
+    user_roles = ["general", "admin"]
+
+    # Execute hybrid search + re-ranking
+    results = await hybrid_search_service.search_and_rerank(
+        query_text=search_request.query,
+        query_embedding=query_embedding,
+        user_roles=user_roles,
+        top_k=search_request.top_k,
+        document_ids=search_request.document_ids,
+        rerank_top_k=5,  # Top 5 parent chunks for LLM context
     )
+
+    return results

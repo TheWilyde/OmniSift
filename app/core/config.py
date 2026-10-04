@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     database_pool_recycle: int = 3600
 
     # Object Storage (SeaweedFS S3 API)
-    s3_endpoint_url: str = "http://localhost:9000"
+    s3_endpoint_url: str = "http://localhost:8333"
     s3_access_key: str = "omnisiftadmin"
     s3_secret_key: str = "omnisiftsecret"
     s3_region: str = "us-east-1"
@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 32
     gemini_api_key: str = ""
     gemini_output_dimensionality: int = 1536
+
+    # Re-ranking (Cross-Encoder)
+    reranker_provider: str = "local"  # cohere, local, onnx
+    reranker_model: str = "BAAI/bge-reranker-base"  # Model for local/onnx
+    reranker_top_k: int = 5  # Final number of parent chunks after re-ranking
+    cohere_api_key: str = ""  # For Cohere Rerank API
+    reranker_model_path: str = ""  # Path to ONNX model file
+    reranker_tokenizer: str = ""  # Tokenizer for ONNX model
+    onnx_provider: str = "CPUExecutionProvider"  # CPUExecutionProvider, CUDAExecutionProvider
+
+    # Confidence Floor
+    relevance_score_threshold: float = 0.25  # Minimum cross-encoder score for sufficient context
 
     # Vector Search
     vector_similarity_threshold: float = 0.7

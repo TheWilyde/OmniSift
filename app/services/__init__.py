@@ -10,6 +10,16 @@ from app.services.embedding_service import (
     create_embedding_provider,
 )
 from app.services.ingestion_pipeline import IngestionPipeline, get_ingestion_pipeline
+from app.services.hybrid_search import HybridSearchService, get_hybrid_search_service
+from app.services.reranker_service import (
+    RerankerProvider,
+    CohereRerankerProvider,
+    LocalCrossEncoderProvider,
+    ONNXCrossEncoderProvider,
+    RerankerService,
+    create_reranker_provider,
+    get_reranker_service,
+)
 
 __all__ = [
     "storage_service",
@@ -23,4 +33,13 @@ __all__ = [
     "create_embedding_provider",
     "IngestionPipeline",
     "get_ingestion_pipeline",
+    "HybridSearchService",
+    "get_hybrid_search_service",
+    "RerankerProvider",
+    "CohereRerankerProvider",
+    "LocalCrossEncoderProvider",
+    "ONNXCrossEncoderProvider",
+    "RerankerService",
+    "create_reranker_provider",
+    "get_reranker_service",
 ]

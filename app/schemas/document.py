@@ -161,3 +161,86 @@ class DocumentSearchResult(BaseModel):
     """Schema for document search result."""
     chunk: DocumentChunkWithScore
     document: DocumentResponse
+
+
+class MatchedChildChunk(BaseModel):
+    """Child chunk match with location info for citations and highlighting."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chunk_index: int
+    page_number: int
+    char_start: int
+    char_end: int
+    bbox: Optional[Dict[str, Any]] = None
+    fused_score: float
+    dense_rank: Optional[int] = None
+    sparse_rank: Optional[int] = None
+
+
+class ResolvedParentChunk(BaseModel):
+    """Parent chunk with its matched child chunks for citation/highlighting."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    chunk_index: int
+    content: str
+    token_count: int
+    page_start: int
+    page_end: int
+    heading_hierarchy: List[str]
+    matched_children: List[MatchedChildChunk]
+    # Highest fused score among matched children for ranking
+    max_fused_score: float
+    # Cross-encoder relevance score (set after re-ranking)
+    relevance_score: Optional[float] = None
+    created_at: datetime
+
+
+class HybridSearchResponse(BaseModel):
+    """Hybrid search response with resolved parent chunks."""
+    results: List[DocumentSearchResult]
+    resolved_parents: List[ResolvedParentChunk]
+    total_child_matches: int
+    unique_parent_count: int
+    # Confidence floor: true if at least one parent chunk meets minimum relevance
+    has_sufficient_context: bool
+    # Search execution metrics
+    dense_match_count: int
+    sparse_match_count: int
+    retrieval_latency_ms: float
+    rerank_latency_ms: float
+    total_latency_ms: float
+
+
+class RetrievalDebugRequest(BaseModel):
+    """Request for retrieval debug endpoint."""
+    query: str = Field(..., min_length=1, max_length=1000)
+    top_k: int = Field(default=5, ge=1, le=50)
+    document_ids: Optional[List[uuid.UUID]] = None
+
+
+class RetrievalDebugParentChunk(BaseModel):
+    """Parent chunk info for debug response."""
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_title: str
+    chunk_index: int
+    content: str
+    token_count: int
+    page_start: int
+    page_end: int
+    heading_hierarchy: List[str]
+    relevance_score: Optional[float] = None
+    max_fused_score: float
+    matched_children: List[MatchedChildChunk]
+
+
+class RetrievalDebugResponse(BaseModel):
+    """Structured response for retrieval debug endpoint."""
+    query: str
+    user_roles: List[str]
+    has_sufficient_context: bool
+    parent_chunks: List[RetrievalDebugParentChunk]
+    metrics: Dict[str, Any]

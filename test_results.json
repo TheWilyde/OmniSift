@@ -1,0 +1,179 @@
+{
+  "test1_rbac": {
+    "passed": true,
+    "data": {
+      "finance": {
+        "query": "revenue recognition ASC 606",
+        "user_roles": [
+          "finance"
+        ],
+        "has_sufficient_context": true,
+        "parent_chunks": [
+          {
+            "id": "15a289a0-8abb-4e0a-892e-68989ea1b3b1",
+            "document_id": "95f600db-30a8-4700-9772-dd581ad7751e",
+            "document_title": "Q3 2024 Financial Report",
+            "chunk_index": 0,
+            "content": "# Q3 2024 Financial Report\n\n## Executive Summary\n\nThe third quarter of 2024 showed strong revenue growth of 15% year-over-year,\ndriven primarily by the enterprise segment. Net income reached $42.3M, exceeding\nanalyst expectations by $3.2M.\n\n## Revenue Recognition\n\nUnder ASC 606, revenue is recognized when control of goods or services transfers\nto the customer. For subscription contracts, revenue is recognized ratably over\nthe contract term. Implementation fees are recognized upon completion of\nonboarding milestones.\n\nKey metrics:\n- ARR: $180M (up 22% YoY)\n- NRR: 118% (best in class)\n- Gross margin: 78%\n\n## Account ACC-2024-0042\n\nMajor enterprise account signed in July 2024. Contract value: $2.4M over 3 years.\nRevenue recognition schedule: $200K per quarter starting Q3 2024.\n\n## Incident Response Protocol\n\nFor personally identifiable data (PII) breaches, the following protocol applies:\n1. Immediate containment within 4 hours of detection\n2. Legal notification within 24 hours per GDPR Article 33\n3. Customer communication within 72 hours\n4. Full forensic report within 30 days\n\nThe privacy team handles all client data incidents through the secure portal.",
+            "token_count": 275,
+            "page_start": 1,
+            "page_end": 1,
+            "heading_hierarchy": [
+              "Q3 2024 Financial Report",
+              "Incident Response Protocol"
+            ],
+            "relevance_score": 0.9992536902427673,
+            "max_fused_score": 0.03278688524590164,
+            "matched_children": [
+              {
+                "id": "1800606d-a6d6-4bf6-a79b-08b486e358f9",
+                "chunk_index": 0,
+                "page_number": 1,
+                "char_start": 0,
+                "char_end": 1168,
+                "bbox": null,
+                "fused_score": 0.03278688524590164,
+                "dense_rank": null,
+                "sparse_rank": null
+              }
+            ]
+          }
+        ],
+        "metrics": {
+          "dense_match_count": 2,
+          "sparse_match_count": 2,
+          "total_child_matches": 2,
+          "unique_parent_count": 1,
+          "retrieval_latency_ms": 50.05,
+          "rerank_latency_ms": 7404.53,
+          "total_latency_ms": 8213.71,
+          "relevance_threshold": 0.25,
+          "reranker_provider": "local",
+          "reranker_model": "BAAI/bge-reranker-base"
+        }
+      },
+      "general": {
+        "query": "revenue recognition ASC 606",
+        "user_roles": [
+          "general"
+        ],
+        "has_sufficient_context": false,
+        "parent_chunks": [],
+        "metrics": {
+          "dense_match_count": 1,
+          "sparse_match_count": 1,
+          "total_child_matches": 1,
+          "unique_parent_count": 0,
+          "retrieval_latency_ms": 48.83,
+          "rerank_latency_ms": 7066.6,
+          "total_latency_ms": 8007.52,
+          "relevance_threshold": 0.25,
+          "reranker_provider": "local",
+          "reranker_model": "BAAI/bge-reranker-base"
+        }
+      }
+    }
+  },
+  "test2_sparse_dense": {
+    "passed": true,
+    "data": {
+      "Exact Identifier (Sparse/BM25)": {
+        "query": "ACC-2024-0042",
+        "dense_match_count": 2,
+        "sparse_match_count": 2,
+        "total_child_matches": 2,
+        "passed": true
+      },
+      "Section Reference (Sparse/BM25)": {
+        "query": "Section 4.2",
+        "dense_match_count": 2,
+        "sparse_match_count": 2,
+        "total_child_matches": 2,
+        "passed": true
+      },
+      "Conceptual Paraphrase (Dense/Vector)": {
+        "query": "handling client privacy breaches incident response",
+        "dense_match_count": 2,
+        "sparse_match_count": 2,
+        "total_child_matches": 2,
+        "passed": true
+      }
+    }
+  },
+  "test3_confidence": {
+    "passed": true,
+    "data": {
+      "query": "How do you bake a sourdough loaf with 75% hydration?",
+      "user_roles": [
+        "finance"
+      ],
+      "has_sufficient_context": false,
+      "parent_chunks": [],
+      "metrics": {
+        "dense_match_count": 2,
+        "sparse_match_count": 2,
+        "total_child_matches": 2,
+        "unique_parent_count": 0,
+        "retrieval_latency_ms": 52.12,
+        "rerank_latency_ms": 7311.02,
+        "total_latency_ms": 8186.44,
+        "relevance_threshold": 0.25,
+        "reranker_provider": "local",
+        "reranker_model": "BAAI/bge-reranker-base"
+      }
+    }
+  },
+  "test4_deduplication": {
+    "passed": true,
+    "data": {
+      "query": "financial report revenue",
+      "user_roles": [
+        "finance"
+      ],
+      "has_sufficient_context": true,
+      "parent_chunks": [
+        {
+          "id": "15a289a0-8abb-4e0a-892e-68989ea1b3b1",
+          "document_id": "95f600db-30a8-4700-9772-dd581ad7751e",
+          "document_title": "Q3 2024 Financial Report",
+          "chunk_index": 0,
+          "content": "# Q3 2024 Financial Report\n\n## Executive Summary\n\nThe third quarter of 2024 showed strong revenue growth of 15% year-over-year,\ndriven primarily by the enterprise segment. Net income reached $42.3M, exceeding\nanalyst expectations by $3.2M.\n\n## Revenue Recognition\n\nUnder ASC 606, revenue is recognized when control of goods or services transfers\nto the customer. For subscription contracts, revenue is recognized ratably over\nthe contract term. Implementation fees are recognized upon completion of\nonboarding milestones.\n\nKey metrics:\n- ARR: $180M (up 22% YoY)\n- NRR: 118% (best in class)\n- Gross margin: 78%\n\n## Account ACC-2024-0042\n\nMajor enterprise account signed in July 2024. Contract value: $2.4M over 3 years.\nRevenue recognition schedule: $200K per quarter starting Q3 2024.\n\n## Incident Response Protocol\n\nFor personally identifiable data (PII) breaches, the following protocol applies:\n1. Immediate containment within 4 hours of detection\n2. Legal notification within 24 hours per GDPR Article 33\n3. Customer communication within 72 hours\n4. Full forensic report within 30 days\n\nThe privacy team handles all client data incidents through the secure portal.",
+          "token_count": 275,
+          "page_start": 1,
+          "page_end": 1,
+          "heading_hierarchy": [
+            "Q3 2024 Financial Report",
+            "Incident Response Protocol"
+          ],
+          "relevance_score": 0.8638942837715149,
+          "max_fused_score": 0.03278688524590164,
+          "matched_children": [
+            {
+              "id": "1800606d-a6d6-4bf6-a79b-08b486e358f9",
+              "chunk_index": 0,
+              "page_number": 1,
+              "char_start": 0,
+              "char_end": 1168,
+              "bbox": null,
+              "fused_score": 0.03278688524590164,
+              "dense_rank": null,
+              "sparse_rank": null
+            }
+          ]
+        }
+      ],
+      "metrics": {
+        "dense_match_count": 2,
+        "sparse_match_count": 2,
+        "total_child_matches": 2,
+        "unique_parent_count": 1,
+        "retrieval_latency_ms": 51.47,
+        "rerank_latency_ms": 7306.16,
+        "total_latency_ms": 8648.27,
+        "relevance_threshold": 0.25,
+        "reranker_provider": "local",
+        "reranker_model": "BAAI/bge-reranker-base"
+      }
+    }
+  }
+}
