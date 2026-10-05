@@ -70,10 +70,11 @@ class Settings(BaseSettings):
     gemini_output_dimensionality: int = 1536
 
     # Re-ranking (Cross-Encoder)
-    reranker_provider: str = "local"  # cohere, local, onnx
-    reranker_model: str = "BAAI/bge-reranker-base"  # Model for local/onnx
+    reranker_provider: str = "local"  # voyage, cohere, local, onnx
+    reranker_model: str = "rerank-2"  # Model for voyage/cohere/local/onnx
     reranker_top_k: int = 5  # Final number of parent chunks after re-ranking
     cohere_api_key: str = ""  # For Cohere Rerank API
+    voyage_api_key: str = ""  # For Voyage AI Rerank API
     reranker_model_path: str = ""  # Path to ONNX model file
     reranker_tokenizer: str = ""  # Tokenizer for ONNX model
     onnx_provider: str = "CPUExecutionProvider"  # CPUExecutionProvider, CUDAExecutionProvider

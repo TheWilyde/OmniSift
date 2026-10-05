@@ -1,8 +1,9 @@
-"""Re-ranking service using cross-encoders (Cohere Rerank API or local models)."""
+"""Re-ranking service using cross-encoders (Voyage AI, Cohere Rerank API, local models, or ONNX)."""
 
 import asyncio
 import logging
 import os
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Optional, Sequence
 
@@ -105,6 +106,67 @@ class CohereRerankerProvider(RerankerProvider):
 
         except Exception as e:
             logger.error(f"Cohere rerank failed: {e}")
+            raise
+
+
+class VoyageRerankerProvider(RerankerProvider):
+    """Voyage AI Rerank API provider."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "rerank-2",
+        max_batch_size: int = 100,
+    ):
+        self._api_key = api_key
+        self._model = model
+        self._max_batch_size = max_batch_size
+        self._client = None
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    async def _get_client(self):
+        """Lazy initialization of Voyage AI client."""
+        if self._client is None:
+            import voyageai
+            self._client = voyageai.AsyncClient(api_key=self._api_key)
+        return self._client
+
+    async def rerank(
+        self,
+        query: str,
+        passages: List[str],
+        top_k: Optional[int] = None,
+    ) -> List[float]:
+        """Re-rank using Voyage AI Rerank API."""
+        if not passages:
+            return []
+
+        client = await self._get_client()
+
+        try:
+            # Voyage AI supports up to 100 documents per request
+            all_scores = []
+            for i in range(0, len(passages), self._max_batch_size):
+                batch = passages[i:i + self._max_batch_size]
+                response = await client.rerank(
+                    query=query,
+                    documents=batch,
+                    model=self._model,
+                    top_k=top_k or len(batch),
+                )
+                # Results are sorted by relevance_score descending
+                # We need to map back to original order
+                batch_results = {r.index: r.relevance_score for r in response.results}
+                batch_scores = [batch_results[j] for j in range(len(batch))]
+                all_scores.extend(batch_scores)
+
+            return all_scores
+
+        except Exception as e:
+            logger.error(f"Voyage AI rerank failed: {e}")
             raise
 
 
@@ -282,7 +344,14 @@ def create_reranker_provider() -> RerankerProvider:
     """Factory function to create the configured re-ranker provider."""
     provider_type = getattr(settings, "reranker_provider", "local").lower()
 
-    if provider_type == "cohere":
+    if provider_type == "voyage":
+        api_key = getattr(settings, "voyage_api_key", "")
+        if not api_key:
+            raise ValueError("Voyage AI API key not configured. Set VOYAGE_API_KEY in environment.")
+        model = getattr(settings, "reranker_model", "rerank-2")
+        return VoyageRerankerProvider(api_key=api_key, model=model)
+
+    elif provider_type == "cohere":
         api_key = getattr(settings, "cohere_api_key", "")
         if not api_key:
             raise ValueError("Cohere API key not configured. Set COHERE_API_KEY in environment.")
