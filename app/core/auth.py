@@ -1,6 +1,6 @@
 """Authentication dependencies and utilities."""
 
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID, uuid4
 from fastapi import Depends, Header, HTTPException, Request, status
 from jose import jwt, JWTError
