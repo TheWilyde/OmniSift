@@ -121,18 +121,18 @@ class VoyageRerankerProvider(RerankerProvider):
         self._api_key = api_key
         self._model = model
         self._max_batch_size = max_batch_size
-        self._client = None
+        self._sync_client = None
 
     @property
     def model_name(self) -> str:
         return self._model
 
-    async def _get_client(self):
-        """Lazy initialization of Voyage AI client."""
-        if self._client is None:
+    async def _get_sync_client(self):
+        """Lazy initialization of Voyage AI sync client."""
+        if self._sync_client is None:
             import voyageai
-            self._client = voyageai.AsyncClient(api_key=self._api_key)
-        return self._client
+            self._sync_client = voyageai.Client(api_key=self._api_key)
+        return self._sync_client
 
     async def rerank(
         self,
@@ -140,18 +140,20 @@ class VoyageRerankerProvider(RerankerProvider):
         passages: List[str],
         top_k: Optional[int] = None,
     ) -> List[float]:
-        """Re-rank using Voyage AI Rerank API."""
+        """Re-rank using Voyage AI Rerank API (sync client in thread pool)."""
         if not passages:
             return []
 
-        client = await self._get_client()
+        client = await self._get_sync_client()
 
         try:
             # Voyage AI supports up to 100 documents per request
             all_scores = []
             for i in range(0, len(passages), self._max_batch_size):
                 batch = passages[i:i + self._max_batch_size]
-                response = await client.rerank(
+                # Run sync client in thread pool to avoid aiohttp DNS issues on Windows
+                response = await asyncio.to_thread(
+                    client.rerank,
                     query=query,
                     documents=batch,
                     model=self._model,
